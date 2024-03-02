@@ -47,13 +47,14 @@ unsigned long int receivedMessage2;
 
 //Variables received
 bool waterPresent;
-unsigned int batteryVoltageSubmarine;
+double batteryVoltageSubmarine;
 long int depth;
 unsigned int gyroX;
 unsigned int gyroY;
 unsigned int gyroZ;
 
 unsigned int messageLengthReceived;
+bool timeoutPassed = false;
 
 
 // Write data to serial1, i is the length of the data to send
@@ -163,6 +164,7 @@ void loop() {
   receivedMessage2 = 0x00;
 
   unsigned long timeout = millis();
+  timeoutPassed = false;
   // Get data
   while (true) {
     // Read the UART for instructions
@@ -198,25 +200,36 @@ void loop() {
     } else {
       if (millis() - timeout > TIMEOUT_RECEIVE) {
         //Timeout - skip receiving
+        timeoutPassed = true;
         break;
       }
     }
   }
+  if (!timeoutPassed) {
+    //Decode message
+    waterPresent = receivedMessage2 & 0b1;
+    receivedMessage2 >>= 1;
+    unsigned long batteryVoltageSubmarineRaw = receivedMessage2 & ((1 << 12) - 1);
+    batteryVoltageSubmarine = (15.0/4096.0)*batteryVoltageSubmarineRaw;
+    receivedMessage2 >>= 12;
 
-  //Decode message
-  waterPresent = receivedMessage2 & 0b1;
-  receivedMessage2 >>= 1;
-  batteryVoltageSubmarine = receivedMessage2 & ((1 << 12) - 1);
-  receivedMessage2 >>= 12;
-  depth = receivedMessage2 & ((1 << 8) - 1);
+    //Nothing is done with variables because they have not yet been implemented on the submarine
+    depth = receivedMessage2 & ((1 << 8) - 1);
 
-  depth += (receivedMessage1 & ((1 << 16) - 1)) << 8;
-  receivedMessage1 >>= 16;
-  gyroZ = receivedMessage1 & ((1 << 16) - 1);
-  receivedMessage1 >>= 16;
-  gyroY = receivedMessage1 & ((1 << 16) - 1);
-  receivedMessage1 >>= 16;
-  gyroX = receivedMessage1 & ((1 << 16) - 1);
+    depth += (receivedMessage1 & ((1 << 16) - 1)) << 8;
+    receivedMessage1 >>= 16;
+    gyroZ = receivedMessage1 & ((1 << 16) - 1);
+    receivedMessage1 >>= 16;
+    gyroY = receivedMessage1 & ((1 << 16) - 1);
+    receivedMessage1 >>= 16;
+    gyroX = receivedMessage1 & ((1 << 16) - 1);
+
+    if (waterPresent){
+      digitalWrite(waterLedPin, HIGH);
+    } else {
+      digitalWrite(waterLedPin, LOW);
+    }
+  }
 
   u8g2.clearBuffer();
   u8g2_draw();
@@ -249,6 +262,8 @@ void u8g2_draw() {
   char angleString[11];
   char batteryVoltageString[5];
   char batteryVoltageStringFormatted[11];
+  char batteryVoltageSubString[5];
+  char batteryVoltageSubStringFormatted[11];
   char xJoystickString[11];
   char yJoystickString[11];
 
@@ -257,6 +272,8 @@ void u8g2_draw() {
   sprintf(angleString, "CAM: %d", camAngle);
   dtostrf(batteryVoltage, 3, 2, batteryVoltageString);
   sprintf(batteryVoltageStringFormatted, "U: %sV", batteryVoltageString);
+  dtostrf(batteryVoltageSubmarine, 3, 2, batteryVoltageSubString);
+  sprintf(batteryVoltageSubStringFormatted, "Us: %sV", batteryVoltageSubString);
   sprintf(xJoystickString, "X: %d", xJoystick);
   sprintf(yJoystickString, "Y: %d", yJoystick);
 
@@ -269,6 +286,11 @@ void u8g2_draw() {
   u8g2.drawStr(0, 20, speedString);
   u8g2.drawStr(0, 30, angleString);
   u8g2.drawStr(0, 40, batteryVoltageStringFormatted);
+  u8g2.drawStr(0, 50, batteryVoltageSubStringFormatted);
   u8g2.drawStr(75, 0, xJoystickString);
   u8g2.drawStr(75, 10, yJoystickString);
+  if (timeoutPassed){
+    u8g2.drawPixel(127,63);
+  }
+  
 }
